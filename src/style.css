@@ -1,0 +1,18 @@
+canvas {
+  position: fixed;
+  top: 0;
+  left: 0;
+}
+
+#lock {
+  position: absolute;
+  z-index: 1000;
+}
+
+#cursorfollow {
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  background-color: red;
+  z-index: 10000;
+}
