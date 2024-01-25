@@ -5,6 +5,13 @@ import CannonDebugger from 'cannon-es-debugger'
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader'
 import { PointerLockControls } from 'three/examples/jsm/controls/PointerLockControls'
 
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js'
+import { FXAAShader } from 'three/examples/jsm/shaders/FXAAShader.js'
+
+import * as Shaders from './assets/shaders.js'
+
 const scene = new THREE.Scene()
 
 const world = new CANNON.World({
@@ -31,25 +38,44 @@ world.addBody(ground)
 
 const cannonDebugger = new CannonDebugger(scene, world)
 
+// camera
 const testCamera = new THREE.PerspectiveCamera(90, window.innerWidth / window.innerHeight, 0.1, 1000)
 testCamera.position.set(100, 300, -100)
 
 const camera = new THREE.PerspectiveCamera(90, window.innerWidth / window.innerHeight, 0.1, 1000)
 camera.position.set(100, 300, -100)
 const helper = new THREE.CameraHelper(camera);
-scene.add(helper)
+//scene.add(helper)
 
+// renderer
 const renderer = new THREE.WebGLRenderer({
   canvas: document.getElementById('bg')
 })
 renderer.setPixelRatio(window.devicePixelRatio)
 renderer.setSize(window.innerWidth, window.innerHeight)
 
+// composer
+const composer = new EffectComposer(renderer)
+composer.addPass(new RenderPass(scene, camera))
+composer.addPass(new ShaderPass(FXAAShader))
+composer.addPass(new ShaderPass({
+  vertexShader: Shaders.chromaVS,
+  fragmentShader: Shaders.chromaFS,
+  uniforms: {
+    map: composer.readBuffer.texture,
+    resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) }
+
+  }
+  //uniforms: { resolution: { value: new THREE.Vector2(window.innerWidth, window.innerHeight) } }
+}))
+console.log(composer)
+
+// gridHelper
 const gridHelper = new THREE.GridHelper(2000, 50)
 scene.add(gridHelper)
 
 //lights
-const ambientLight = new THREE.AmbientLight(0x000099, 1)
+const ambientLight = new THREE.AmbientLight(0x99ff99, 1)
 scene.add(ambientLight)
 
 const topLight = new THREE.PointLight(0xffffff, 10000)
@@ -70,13 +96,33 @@ world.addBody(player)
 
 //model
 let playerModel
-objLoader.load('assets/doggo_merged.obj', function (car) {
-  //let material = new THREE.MeshToonMaterial({ color: 0x6ef5b1 })
-  //carMesh = new THREE.Mesh(car, material)
-  scene.add(car)
-  playerModel = car
-  //playerModel.rotation.reorder('YXZ')
+
+const dogMaterial = new THREE.ShaderMaterial({
+  uniforms: {},
+  vertexShader: Shaders.dogVS,
+  fragmentShader: Shaders.dogFS
 })
+
+const placeHolderMaterial = new THREE.MeshToonMaterial({ color: 0xffffff })
+
+objLoader.load('assets/doggo_merged.obj',
+  function (obj) {
+    obj.traverse(function (child) {
+      if (child instanceof THREE.Mesh) {
+        child.material = placeHolderMaterial;
+      }
+    });
+    scene.add(obj);
+    playerModel = obj;
+    console.log(obj)
+  },
+  function (xhr) {
+    console.log((xhr.loaded / xhr.total * 100) + "% loaded")
+  },
+  function (err) {
+    console.error("Error loading 'doggo_merged.obj': " + err)
+  }
+);
 
 const tGeometry = new THREE.TorusGeometry(10, 2, 16, 20);
 const tMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
@@ -84,7 +130,16 @@ const torus = new THREE.Mesh(tGeometry, tMaterial);
 torus.quaternion.set(0.6, 0, 0, 1)
 scene.add(torus);
 
+const cubeGeometry = new THREE.BoxGeometry(100, 100, 100);
+const cubeMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff });
+const cube = new THREE.Mesh(cubeGeometry, cubeMaterial);
+scene.add(cube);
+cube.position.set(200, 50, 100)
+
 //controls
+
+const controls = new OrbitControls(camera, renderer.domElement);
+
 // player controls
 let upPressed = false
 let leftPressed = false
@@ -138,8 +193,6 @@ window.addEventListener('keyup', (e) => {
 function playerMovement() {
   let pVelocity = player.velocity
 
-  logOnce(player)
-
   if (upPressed == true && downPressed != true) {
 
     pVelocity.x = movementSpeed * Math.sin(rotationRadians)
@@ -157,15 +210,13 @@ function playerMovement() {
     pVelocity.x = -movementSpeed * Math.cos(rotationRadians)
     pVelocity.z = -movementSpeed * Math.sin(-rotationRadians)
   }
-
-  logOnce(player)
 }
 
 function cameraRotateWithPlayer() {
   const idealOffset = new THREE.Vector3(
-    playerModel.position.x - 100 * Math.sin(rotationRadians),
-    playerModel.position.y + 200,
-    playerModel.position.z - 100 * Math.cos(rotationRadians)
+    playerModel.position.x - 300 * Math.sin(rotationRadians),
+    playerModel.position.y + 250,
+    playerModel.position.z - 40 * Math.cos(rotationRadians)
   )
 
   const idealLookat = new THREE.Vector3(
@@ -214,19 +265,13 @@ function animate() {
   playerModel.position.copy(player.position)
   playerModel.position.y -= 2
 
+  controls.update();
+
   playerMovement()
 
-  if (cameraLock == true) { cameraRotateWithPlayer() }
+  //if (cameraLock == true) { cameraRotateWithPlayer() }
 
-  renderer.render(scene, camera)
-}
-
-let logLock = false
-function logOnce(e) {
-  if (logLock == false) {
-    logLock = true
-    console.log(e)
-  }
+  composer.render(scene, camera)
 }
 
 animate()
